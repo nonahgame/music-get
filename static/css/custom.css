@@ -1,0 +1,7 @@
+/* Mobile-first */
+@media (max-width: 768px) {
+    #lyrics { font-size: 14px; }
+    #soundwave { height: 200px; }
+}
+#lyrics-scroll { white-space: nowrap; overflow: hidden; animation: scroll 30s linear infinite; }
+@keyframes scroll { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }

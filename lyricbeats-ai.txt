@@ -1,0 +1,28 @@
+lyricbeats-ai/
+├── README.md                  # Project overview, setup/run instructions, API keys needed
+├── .env.example               # Template for env vars (GROQ_API_KEY, etc.; gitignore .env)
+├── .gitignore                 # Ignore .env, __pycache__, .db files, outputs/
+├── requirements.txt           # Pip deps (generated via `pip freeze > requirements.txt`)
+├── setup.py                   # Editable install (as before)
+├── alembic.ini                # DB config
+├── app.py                     # Flask entrypoint (routes, agent invocation)
+├── database.py                # SQLAlchemy models + Pydantic
+├── tools.py                   # LangChain tools (Drive, voice, blending, viz)
+├── agent.py                   # LangGraph workflow + LangSmith callbacks
+├── wsgi.py                    # For Render/Gunicorn (entry: `gunicorn wsgi:app`)
+├── migrations/                # Alembic migrations folder
+│   └── versions/
+│       ├── 001_create_music_memory_table.py
+│       └── 002_update_music_memory.py
+├── static/                    # CSS/JS/assets (for responsiveness)
+│   ├── css/
+│   │   └── custom.css         # Custom overrides for soundwave/lyrics
+│   ├── js/
+│   │   └── app.js             # JS for form handling, soundwave viz, lyrics scroll
+│   └── assets/                # Default pics/videos if Drive fails
+│       ├── default_pic.jpg
+│       └── default_video.mp4
+├── templates/                 # Jinja2 HTML
+│   └── index.html             # Main responsive UI
+└── output/                    # Generated files (gitignore; serve via /downloads/<file>)
+    # (Auto-created; e.g., generated1.mp3, blended2.mp4)
