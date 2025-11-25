@@ -152,4 +152,5 @@ def health():
 
 if __name__ == "__main__":
     # Production: replace with gunicorn/wsgi; for local testing this is fine
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
+
