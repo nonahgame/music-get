@@ -176,3 +176,4 @@ def store_generation(
         )
 
     return "stored"
+
