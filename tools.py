@@ -1,61 +1,178 @@
-# ... (existing imports)
-from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, ColorClip
-from langchain_community.utilities import GoogleSerperAPIWrapper  # For online search (add SERPER_API_KEY if needed)
+# tools.py
+import os
+import random
 import time
+from moviepy.editor import (
+    VideoFileClip, AudioFileClip, TextClip,
+    CompositeVideoClip, ColorClip, ImageClip
+)
+from pydub import AudioSegment
+from langchain.tools import tool
+from langchain_community.utilities import GoogleSerperAPIWrapper
 
-# ... (existing tools)
+OUTPUT_DIR = "output"
+PUBLIC_DIR = "public_downloads"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(PUBLIC_DIR, exist_ok=True)
 
+# ============================================================
+#  SEARCH IMAGES / VIDEOS ONLINE
+# ============================================================
 @tool
-def search_online_asset(asset_type: str, query: str, timeout: float = 270) -> str:  # 4:30 min = 270s
-    """Search online for pic/video (Unsplash/Pexels). Timeout fallback."""
-    start = time.time()
-    search = GoogleSerperAPIWrapper()  # Or direct requests to APIs
-    results = search.run(f"{query} {asset_type} free license")
-    # Parse first valid URL (simplified; extend with API calls)
-    urls = [r for r in results.split() if 'unsplash.com' in r or 'pexels.com' in r]
-    if urls:
-        return random.choice(urls)
-    if time.time() - start > timeout:
-        return "not_available_yet_try_later"
-    return search_online_asset(asset_type, query)  # Retry
+def search_online_asset(asset_type: str, query: str) -> str:
+    """
+    Search online images/videos using Google Serper API.
+    Returns ONE usable URL or 'none'.
+    """
+    try:
+        search = GoogleSerperAPIWrapper()
+        results = search.results(f"{query} {asset_type} free image")
+        urls = []
 
+        # Extract any URL-like items
+        for r in results.get("organic", []):
+            link = r.get("link", "")
+            if any(x in link for x in ["pexels.com", "unsplash.com", "pixabay.com"]):
+                urls.append(link)
+
+        if urls:
+            return random.choice(urls)
+        return "none"
+    except:
+        return "none"
+
+
+# ============================================================
+#   GENERATE MP4 / MP3 / WAV VISUAL VIDEO
+# ============================================================
 @tool
-def generate_visual_mp4(audio_path: str, file_format: str, pic: str | None, video: str | None, title: str, lyrics: list[str], user_id: str) -> str:
-    """Generate MP4 with soundwave header, title, scrolling lyrics footer."""
+def generate_visual_mp4(
+    audio_path: str,
+    file_format: str,
+    pic: str | None,
+    video: str | None,
+    title: str,
+    lyrics: list[str],
+    user_id: str
+) -> str:
+    """
+    Generates:
+      - MP3/WAV (audio only)
+      - simple_mp4 (black + title + lyrics)
+      - high_mp4 (merged video + audio)
+    """
     audio = AudioFileClip(audio_path)
-    if file_format == 'simple_mp4':
-        # Soundwave viz (placeholder; JS handles client-side)
-        viz_clip = ColorClip(size=(1280, 720), color=(0,0,0), duration=audio.duration)  # Black bg
-        # Add pic as bg
-        if pic:
-            bg = ImageClip(pic).set_duration(audio.duration).resize((1280, 720))
-            viz_clip = CompositeVideoClip([bg, viz_clip])
-        # Title text
-        title_clip = TextClip(title, fontsize=50, color='white').set_position('center').set_duration(audio.duration)
-        viz_clip = CompositeVideoClip([viz_clip, title_clip])
-        # Lyrics footer: Sentence-by-sentence (assume timed; simple scroll)
-        footer = TextClip(" | ".join(lyrics[:3]), fontsize=30, color='yellow').set_position(('center', 'bottom')).set_duration(audio.duration)  # Limit sentences
-        final = CompositeVideoClip([viz_clip, footer]).set_audio(audio)
-        path = f"simple_mp4_{user_id}.mp4"
-        final.write_videofile(path, fps=24, codec='libx264', audio_codec='aac')
-    elif file_format == 'high_mp4':
-        # Blend with video
-        if video:
-            vid = VideoFileClip(video).subclip(0, audio.duration).resize((1280, 720))
-            viz_clip = CompositeVideoClip([vid])  # Blend logic
-        # Same title/lyrics as above
-        # ...
-        path = f"high_mp4_{user_id}.mp4"
-        # Write similar to above
-    # Fallback MP3/WAV: pydub convert
-    elif file_format == 'wav':
-        AudioSegment.from_file(audio_path).export(f"high_quality_{user_id}.wav", format="wav")
-        path = f"high_quality_{user_id}.wav"
-    else:  # mp3
-        path = audio_path  # Already MP3
-    return path
 
-# Update store_generation to include new fields
+    # ======================================================
+    #   SIMPLE MP4 (static background + title + lyrics)
+    # ======================================================
+    if file_format == "simple_mp4":
+
+        bg_clip = ColorClip(size=(1280, 720), color=(0, 0, 0), duration=audio.duration)
+
+        # If image found, overlay it
+        if pic and pic != "none":
+            try:
+                img = ImageClip(pic).resize((1280, 720)).set_duration(audio.duration)
+                bg_clip = CompositeVideoClip([img])
+            except:
+                pass
+
+        # Title
+        title_clip = TextClip(
+            txt=title,
+            fontsize=60,
+            color="white"
+        ).set_position("center").set_duration(audio.duration)
+
+        # Lyrics (limited for display)
+        footer_text = "   |   ".join(lyrics[:3])
+        footer_clip = TextClip(
+            txt=footer_text,
+            fontsize=32,
+            color="yellow"
+        ).set_position(("center", "bottom")).set_duration(audio.duration)
+
+        final = CompositeVideoClip([bg_clip, title_clip, footer_clip])
+        final = final.set_audio(audio)
+
+        out_path = f"{OUTPUT_DIR}/simple_{user_id}.mp4"
+        final.write_videofile(out_path, fps=24, codec="libx264", audio_codec="aac")
+        return out_path
+
+    # ======================================================
+    #   HIGH MP4 (use downloaded video)
+    # ======================================================
+    if file_format == "high_mp4":
+
+        if video and video != "none":
+            try:
+                vid = VideoFileClip(video).subclip(0, audio.duration).resize((1280, 720))
+            except:
+                # fallback: black screen
+                vid = ColorClip(size=(1280,720), color=(0,0,0), duration=audio.duration)
+        else:
+            vid = ColorClip(size=(1280,720), color=(0,0,0), duration=audio.duration)
+
+        title_clip = TextClip(
+            title, fontsize=60, color="white"
+        ).set_position("center").set_duration(audio.duration)
+
+        scroll_text = "\n".join(lyrics[:40])  # large scroll
+        lyrics_clip = TextClip(
+            scroll_text,
+            fontsize=28,
+            color="yellow",
+            align="West"
+        ).set_position(("center", "bottom")).set_duration(audio.duration)
+
+        final = CompositeVideoClip([vid, title_clip, lyrics_clip])
+        final = final.set_audio(audio)
+
+        out_path = f"{OUTPUT_DIR}/high_{user_id}.mp4"
+        final.write_videofile(out_path, fps=24, codec="libx264", audio_codec="aac")
+        return out_path
+
+    # ======================================================
+    #   AUDIO ONLY (MP3 or WAV)
+    # ======================================================
+    if file_format == "wav":
+        out_path = f"{OUTPUT_DIR}/audio_{user_id}.wav"
+        AudioSegment.from_file(audio_path).export(out_path, format="wav")
+        return out_path
+
+    # default mp3 output
+    return audio_path
+
+
+# ============================================================
+#   STORE GENERATION (UPDATE TO SUPPORT NEW FIELDS)
+# ============================================================
 @tool
-def store_generation(... , file_format: str, instrument_pic: str | None, instrument_video: str | None, ...):
-    # ... (add to DB)
+def store_generation(
+    user_id: str,
+    title: str,
+    lyrics: str,
+    file_path: str,
+    file_format: str,
+    pic_url: str | None,
+    video_url: str | None
+):
+    """
+    Store generation metadata in simple text log.
+    Real DB later.
+    """
+
+    with open("generation_log.txt", "a") as f:
+        f.write(
+            f"\nUSER: {user_id}\n"
+            f"TITLE: {title}\n"
+            f"FORMAT: {file_format}\n"
+            f"FILE: {file_path}\n"
+            f"PIC: {pic_url}\n"
+            f"VIDEO: {video_url}\n"
+            f"LYRICS_LEN: {len(lyrics)}\n"
+            f"---------------------------\n"
+        )
+
+    return "stored"
