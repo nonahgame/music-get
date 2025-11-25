@@ -25,13 +25,14 @@
 
     <div class="card p-4">
 
+        <!-- Form -->
         <form id="f">
 
             <div class="mb-3">
                 <input type="text" class="form-control" id="title" placeholder="Song Title" required>
             </div>
 
-            <textarea class="form-control" id="lyrics" rows="10" placeholder="Paste lyrics..." required></textarea>
+            <textarea class="form-control" id="lyrics" maxlength="6000" rows="10" placeholder="Paste full lyrics (max 6000 chars)..." required></textarea>
 
             <div class="text-end counter">
                 Chars: <span id="c">0</span>/6000 | Words: <span id="w">0</span>
@@ -41,16 +42,18 @@
 
                 <div class="col-md-3">
                     <select class="form-select" id="genre">
-                        <option>hip-hop</option>
-                        <option>pop</option>
-                        <option>r&b</option>
+                        <option value="hip-hop">Hip-Hop</option>
+                        <option value="pop">Pop</option>
+                        <option value="r&b">R&B</option>
                     </select>
                 </div>
 
+                <!-- FIXED: Only one voice select -->
                 <div class="col-md-3">
                     <select class="form-select" id="voice">
-                        <option>Male Rapper</option>
-                        <option>Female Soulful</option>
+                        <option value="male">Male Rapper</option>
+                        <option value="female">Female Soulful</option>
+                        <option value="custom">Custom Voice (Upload WAV)</option>
                     </select>
                 </div>
 
@@ -71,6 +74,14 @@
 
         </form>
 
+        <!-- Custom Voice Upload -->
+        <div class="col-md-12 mt-3" id="voice-upload-row" style="display:none;">
+            <label class="form-label">Upload voice sample (WAV, 5–30 seconds)</label>
+            <input type="file" id="voice-file" accept=".wav" class="form-control" />
+            <button id="uploadVoiceBtn" class="btn btn-sm btn-outline-info mt-2">Upload Voice Sample</button>
+            <div id="uploadStatus" class="mt-2"></div>
+        </div>
+
         <div id="res" class="mt-4"></div>
 
     </div>
@@ -79,94 +90,122 @@
 
 
 <script>
-    // Character counter
-    document.getElementById('lyrics').addEventListener('input', e => {
-        let t = e.target.value;
-        document.getElementById('c').textContent = t.length;
-        document.getElementById('w').textContent = t.trim() ? t.trim().split(/\s+/).length : 0;
+/* -----------------------------
+   CHARACTER + WORD COUNTER
+----------------------------- */
+document.getElementById('lyrics').addEventListener('input', e => {
+    let t = e.target.value;
+    document.getElementById('c').textContent = t.length;
+    document.getElementById('w').textContent = t.trim()
+        ? t.trim().split(/\s+/).length
+        : 0;
+});
+
+/* -----------------------------
+   SHOW / HIDE CUSTOM VOICE UPLOAD
+----------------------------- */
+document.getElementById('voice').addEventListener('change', e => {
+    document.getElementById('voice-upload-row').style.display =
+        (e.target.value === 'custom') ? 'block' : 'none';
+});
+
+/* -----------------------------
+   UPLOAD CUSTOM VOICE
+----------------------------- */
+document.getElementById('uploadVoiceBtn').addEventListener('click', async ev => {
+    ev.preventDefault();
+    const input = document.getElementById('voice-file');
+    if (!input.files.length) return alert('Select a WAV file');
+
+    const fd = new FormData();
+    fd.append('voice', input.files[0]);
+
+    document.getElementById('uploadStatus').innerText = 'Uploading...';
+
+    const res = await fetch('/upload_voice', { method: 'POST', body: fd });
+    const j = await res.json();
+
+    document.getElementById('uploadStatus').innerText =
+        j.message || JSON.stringify(j);
+});
+
+/* -----------------------------
+   POLL SERVER UNTIL FILE READY
+----------------------------- */
+async function waitForGeneratedFile() {
+    for (let i = 0; i < 60; i++) { // Poll up to 10 minutes
+        let res = await fetch("/list");
+        let files = await res.json();
+
+        if (files.length > 0) {
+            let latest = files[0];
+            return latest.public_url;
+        }
+
+        await new Promise(r => setTimeout(r, 10000)); // wait 10s
+    }
+    return null;
+}
+
+/* -----------------------------
+   FORM SUBMISSION
+----------------------------- */
+document.getElementById('f').onsubmit = async e => {
+    e.preventDefault();
+
+    document.getElementById('btn').disabled = true;
+    document.getElementById('btn').textContent = "Generating...";
+
+    document.getElementById('res').innerHTML = `
+        <h3>Generating real song + video... Please wait 2–6 minutes</h3>
+        <div class="d-flex justify-content-center mt-3">
+            <div class="spinner-border text-success spinner-large"></div>
+        </div>
+        <p class="mt-3 text-info">Do NOT refresh this page.</p>
+    `;
+
+    await fetch('/generate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            title: document.getElementById('title').value,
+            lyrics: document.getElementById('lyrics').value,
+            genre: document.getElementById('genre').value,
+            voice_type: document.getElementById('voice').value,
+            file_format: document.getElementById('format').value
+        })
     });
 
+    // Poll until file is ready
+    let url = await waitForGeneratedFile();
 
-    // Form submission
-    document.getElementById('f').onsubmit = async e => {
-        e.preventDefault();
+    if (!url) {
+        document.getElementById('res').innerHTML =
+            `<h3 class="text-danger">❌ File generation timed out. Try again.</h3>`;
+        return;
+    }
 
-        document.getElementById('btn').disabled = true;
-        document.getElementById('btn').textContent = "Generating...";
+    document.getElementById('res').innerHTML = `
+        <h3 class="text-success">✔ Music Generated Successfully!</h3>
 
-        document.getElementById('res').innerHTML = `
-            <h3>Generating real song + video... Please wait 2–6 minutes</h3>
-            <div class="d-flex justify-content-center mt-3">
-                <div class="spinner-border text-success spinner-large"></div>
-            </div>
-        `;
+        <a href="${url}" class="btn btn-primary w-100 mb-3">⬇ Download Your File</a>
 
-        await fetch('/generate', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                title: document.getElementById('title').value,
-                lyrics: document.getElementById('lyrics').value,
-                genre: document.getElementById('genre').value,
-                voice_type: document.getElementById('voice').value,
-                file_format: document.getElementById('format').value
-            })
-        });
+        <ul>
+            <li><b>Latest file:</b> ${url}</li>
+            <li>Server public folder: <b>public_downloads/</b></li>
+            <li>GitHub Backup:
+                <a href="https://github.com/nonahgame/music-getor/tree/main/d-output" target="_blank">
+                    d-output folder
+                </a>
+            </li>
+        </ul>
 
-        document.getElementById('res').innerHTML = `
-            <h3 class="text-success">✔ Song Generated Successfully!</h3>
-            <p>Your file is ready.</p>
+        <p class="text-warning">If GitHub doesn't show the new file yet, refresh after 30–60 seconds.</p>
+    `;
 
-            <a href="/latest" class="btn btn-primary w-100 mb-2">⬇ Download Latest File</a>
-
-            <ul>
-                <li>Server Folder: <b>output/</b></li>
-                <li>Browser Public: <b>public_downloads/</b></li>
-                <li>GitHub Backup: 
-                    <a href="https://github.com/nonahgame/music-getor/tree/main/d-output" target="_blank">
-                        d-output folder
-                    </a>
-                </li>
-            </ul>
-
-            <p class="text-warning">If not visible on GitHub, refresh page after 30–60 seconds.</p>
-        `;
-
-        document.getElementById('btn').disabled = false;
-        document.getElementById('btn').textContent = "GENERATE";
-    };
-</script>
-<!-- # add this in the index.html -->
-<div class="col-md-3">
-  <select class="form-select" id="voice">
-    <option value="male">Male Rapper</option>
-    <option value="female">Female Soulful</option>
-    <option value="custom">Custom (Upload)</option>
-  </select>
-</div>
-<div class="col-md-12 mt-2" id="voice-upload-row" style="display:none;">
-  <label class="form-label">Upload voice sample (WAV, 5–30s)</label>
-  <input type="file" id="voice-file" accept=".wav" class="form-control" />
-  <button id="uploadVoiceBtn" class="btn btn-sm btn-outline-info mt-2">Upload Voice Sample</button>
-  <div id="uploadStatus"></div>
-</div>
-
-<script>
-document.getElementById('voice').addEventListener('change', e=>{
-  document.getElementById('voice-upload-row').style.display = (e.target.value==='custom') ? 'block' : 'none';
-});
-
-document.getElementById('uploadVoiceBtn').addEventListener('click', async (ev)=>{
-  ev.preventDefault();
-  const input = document.getElementById('voice-file');
-  if(!input.files.length) return alert('Select a WAV file');
-  const fd = new FormData();
-  fd.append('voice', input.files[0]);
-  document.getElementById('uploadStatus').innerText = 'Uploading...';
-  const res = await fetch('/upload_voice', {method:'POST', body:fd});
-  const j = await res.json();
-  document.getElementById('uploadStatus').innerText = j.message || JSON.stringify(j);
-});
+    document.getElementById('btn').disabled = false;
+    document.getElementById('btn').textContent = "GENERATE";
+};
 </script>
 
 </body>
