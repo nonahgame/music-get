@@ -2,6 +2,10 @@
 import os
 import torch
 
+# Compatibility fix for PyTorch 2.1.0 pytree registration (MusicGen check fails without this)
+if not hasattr(torch.utils._pytree, 'register_pytree_node'):
+    torch.utils._pytree.register_pytree_node = torch.utils._pytree._register_pytree_node
+
 try:
     from audiocraft.models import MusicGen
     from audiocraft.data.audio import audio_write
@@ -31,4 +35,5 @@ class MusicGenGenerator:
         wavs = self.model.generate(descriptions=[prompt])
         # write wav
         audio_write(out_path, wavs[0].cpu(), self.model.sample_rate)
+
         return out_path
