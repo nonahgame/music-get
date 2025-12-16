@@ -1,0 +1,8 @@
+LICENSE
+README.md
+setup.py
+lyricbeats_ai.egg-info/PKG-INFO
+lyricbeats_ai.egg-info/SOURCES.txt
+lyricbeats_ai.egg-info/dependency_links.txt
+lyricbeats_ai.egg-info/requires.txt
+lyricbeats_ai.egg-info/top_level.txt
